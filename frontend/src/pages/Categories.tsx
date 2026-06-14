@@ -1,149 +1,137 @@
 import { useState, useEffect } from 'react';
 import { Category } from '../types';
 import { categories } from '../services/api';
-
-const tableStyle: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  backgroundColor: '#fff',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-  borderRadius: 8,
-  overflow: 'hidden',
-};
-
-const thStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  textAlign: 'left',
-  backgroundColor: '#1976d2',
-  color: '#fff',
-  fontSize: 13,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: '10px 16px',
-  borderBottom: '1px solid #eee',
-  fontSize: 13,
-};
-
-const btnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontSize: 12,
-  color: '#fff',
-  marginRight: 4,
-};
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
+import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 
 export default function Categories() {
   const [list, setList] = useState<Category[]>([]);
   const [name, setName] = useState('');
   const [editId, setEditId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
+  const [error, setError] = useState('');
 
   const load = () => {
     categories.getAll().then((r) => setList(r.data)).catch(() => {});
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
     if (!name.trim()) return;
-    await categories.create({ name });
-    setName('');
-    load();
+    try {
+      await categories.create({ name: name.trim() });
+      setName('');
+      setError('');
+      load();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Erro ao criar categoria.');
+    }
   };
 
   const handleUpdate = async () => {
     if (!editId || !editName.trim()) return;
-    await categories.update(editId, { name: editName });
-    setEditId(null);
-    setEditName('');
-    load();
+    try {
+      await categories.update(editId, { name: editName.trim() });
+      setEditId(null);
+      setEditName('');
+      setError('');
+      load();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Erro ao atualizar categoria.');
+    }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Excluir categoria?')) return;
-    await categories.delete(id);
-    load();
+    try {
+      await categories.delete(id);
+      load();
+    } catch (e: any) {
+      setError(e.response?.data?.message || 'Erro ao excluir categoria.');
+    }
   };
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>Categorias</h2>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input
-          placeholder="Nova categoria..."
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-          style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, flex: 1 }}
-        />
-        <button
-          onClick={handleCreate}
-          style={{ ...btnStyle, backgroundColor: '#1976d2', padding: '8px 20px', fontSize: 14 }}
-        >
-          Adicionar
-        </button>
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Categorias</h2>
+        <div className="flex gap-3">
+          <input
+            placeholder="Nova categoria..."
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            className="rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+          <button
+            onClick={handleCreate}
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar
+          </button>
+        </div>
       </div>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Nome</th>
-            <th style={thStyle}>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((c, i) => (
-            <tr key={c.id} style={{ backgroundColor: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-              <td style={tdStyle}>{c.id}</td>
-              <td style={tdStyle}>
-                {editId === c.id ? (
-                  <input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleUpdate()}
-                    style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4 }}
-                    autoFocus
-                  />
-                ) : (
-                  c.name
-                )}
-              </td>
-              <td style={tdStyle}>
-                {editId === c.id ? (
-                  <>
-                    <button onClick={handleUpdate} style={{ ...btnStyle, backgroundColor: '#43a047' }}>
-                      Salvar
-                    </button>
-                    <button onClick={() => setEditId(null)} style={{ ...btnStyle, backgroundColor: '#757575' }}>
-                      Cancelar
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => {
-                        setEditId(c.id);
-                        setEditName(c.name);
-                      }}
-                      style={{ ...btnStyle, backgroundColor: '#fb8c00' }}
-                    >
-                      Editar
-                    </button>
-                    <button onClick={() => handleDelete(c.id)} style={{ ...btnStyle, backgroundColor: '#e53935' }}>
-                      Excluir
-                    </button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+
+      {error && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-20">ID</TableHead>
+              <TableHead>Nome</TableHead>
+              <TableHead className="w-32">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {list.map((c) => (
+              <TableRow key={c.id}>
+                <TableCell className="text-gray-500 dark:text-gray-400">{c.id}</TableCell>
+                <TableCell>
+                  {editId === c.id ? (
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUpdate()}
+                      className="rounded-xl border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 w-full max-w-xs"
+                      autoFocus
+                    />
+                  ) : (
+                    <span className="font-medium text-gray-800 dark:text-white">{c.name}</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {editId === c.id ? (
+                    <div className="flex items-center gap-1">
+                      <button onClick={handleUpdate} className="p-1.5 rounded-md text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors" title="Salvar">
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setEditId(null)} className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Cancelar">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditId(c.id); setEditName(c.name); }} className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors" title="Editar">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" title="Excluir">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

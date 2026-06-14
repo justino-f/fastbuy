@@ -25,10 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await apiLogin({ email, password });
+    const u: User = { id: 0, name: res.name, email: res.email, role: res.role, active: true };
     localStorage.setItem('token', res.token);
-    localStorage.setItem('user', JSON.stringify(res.user));
+    localStorage.setItem('user', JSON.stringify(u));
     setToken(res.token);
-    setUser(res.user);
+    setUser(u);
   };
 
   const logout = () => {

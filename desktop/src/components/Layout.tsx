@@ -2,9 +2,9 @@ import Sidebar from './Sidebar';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
       <Sidebar />
-      <main style={{ flex: 1, padding: '24px', background: '#f5f5f5', overflowY: 'auto' }}>
+      <main className="flex-1 overflow-y-auto p-8">
         {children}
       </main>
     </div>

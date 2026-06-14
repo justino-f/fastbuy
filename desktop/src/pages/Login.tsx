@@ -17,22 +17,26 @@ export default function Login() {
     try {
       await login(email, password);
       navigate('/pdv');
-    } catch {
-      setError('Email ou senha inválidos.');
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Email ou senha inválidos.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div style={styles.container}>
-      <form onSubmit={handleSubmit} style={styles.card}>
-        <div style={styles.logoArea}>
-          <div style={styles.logoIcon}>🛒</div>
-          <h1 style={styles.title}>FastBuy PDV</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-500 to-indigo-700">
+      <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-xl p-10 w-96 flex flex-col gap-5">
+        <div className="text-center mb-2">
+          <div className="text-4xl mb-2">🛒</div>
+          <h1 className="text-2xl font-bold text-indigo-600">FastBuy PDV</h1>
+          <p className="text-sm text-gray-400 mt-1">Acesse o ponto de venda</p>
         </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error && (
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm">{error}</div>
+        )}
 
         <input
           type="email"
@@ -40,7 +44,7 @@ export default function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={styles.input}
+          className="w-full rounded-xl border border-gray-200 py-3 px-4 text-sm text-gray-700 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
 
         <input
@@ -49,70 +53,17 @@ export default function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={styles.input}
+          className="w-full rounded-xl border border-gray-200 py-3 px-4 text-sm text-gray-700 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
 
-        <button type="submit" disabled={loading} style={styles.button}>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 text-white py-3 rounded-xl text-sm font-semibold shadow-sm transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+        >
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
       </form>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: '100vh',
-    background: '#f0f2f5',
-  },
-  card: {
-    background: '#fff',
-    borderRadius: 8,
-    padding: 40,
-    width: 380,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
-  },
-  logoArea: {
-    textAlign: 'center' as const,
-    marginBottom: 8,
-  },
-  logoIcon: {
-    fontSize: 48,
-  },
-  title: {
-    margin: 0,
-    fontSize: 24,
-    color: '#2196F3',
-    fontWeight: 700,
-  },
-  error: {
-    background: '#ffebee',
-    color: '#c62828',
-    padding: '10px 14px',
-    borderRadius: 4,
-    fontSize: 14,
-  },
-  input: {
-    padding: '12px 14px',
-    border: '1px solid #ddd',
-    borderRadius: 4,
-    fontSize: 15,
-    outline: 'none',
-  },
-  button: {
-    padding: '12px 0',
-    background: '#2196F3',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 4,
-    fontSize: 16,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-};

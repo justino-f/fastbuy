@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
             e.HasIndex(p => p.Barcode).IsUnique();
             e.HasIndex(p => p.SKU).IsUnique();
             e.HasOne(p => p.Category).WithMany(c => c.Products).HasForeignKey(p => p.CategoryId);
+            e.HasOne(p => p.Supplier).WithMany(s => s.Products).HasForeignKey(p => p.SupplierId).OnDelete(DeleteBehavior.SetNull);
             e.Property(p => p.CostPrice).HasPrecision(18, 2);
             e.Property(p => p.SalePrice).HasPrecision(18, 2);
         });

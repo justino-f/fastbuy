@@ -78,10 +78,10 @@ export const suppliers = {
 
 export const stock = {
   getMovements: (productId?: number) =>
-    api.get<StockMovement[]>('/stock', { params: { productId } }),
+    api.get<StockMovement[]>('/stock/movements', { params: { productId } }),
   addMovement: (data: { productId: number; type: string; quantity: number; reason?: string }) =>
-    api.post<StockMovement>('/stock', data),
-  getLowStock: () => api.get<Product[]>('/stock/low'),
+    api.post<StockMovement>('/stock/movement', data),
+  getLowStock: () => api.get<Product[]>('/stock/low-stock'),
 };
 
 export const sales = {
@@ -108,18 +108,11 @@ export const dashboard = {
   get: () => api.get<DashboardData>('/dashboard'),
 };
 
-export const reports = {
-  getSales: (period: string) => api.get('/reports/sales', { params: { period } }),
-  getTopProducts: () => api.get('/reports/top-products'),
-  getLowStock: () => api.get('/reports/low-stock'),
-  getRevenue: () => api.get('/reports/revenue'),
-};
-
 export const dataStructures = {
   enqueueClient: (clientId: number) => api.post('/data-structures/queue/enqueue', { clientId }),
   dequeueClient: () => api.post('/data-structures/queue/dequeue'),
   peekQueue: () => api.get('/data-structures/queue/peek'),
-  getQueue: () => api.get<Client[]>('/data-structures/queue'),
+  getQueue: () => api.get<{ count: number; clients: Client[] }>('/data-structures/queue'),
   getStack: () => api.get<CancelledCoupon[]>('/data-structures/stack'),
   peekStack: () => api.get('/data-structures/stack/peek'),
   popStack: () => api.post('/data-structures/stack/pop'),

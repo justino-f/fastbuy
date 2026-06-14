@@ -13,16 +13,11 @@ export function saveProducts(products: Product[]): void {
 export function getProducts(): Product[] {
   const raw = localStorage.getItem(KEYS.products);
   if (!raw) return [];
-  try {
-    return JSON.parse(raw) as Product[];
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(raw) as Product[]; } catch { return []; }
 }
 
 export function getProductByBarcode(barcode: string): Product | null {
-  const products = getProducts();
-  return products.find((p) => p.barcode === barcode) ?? null;
+  return getProducts().find((p) => p.barcode === barcode) ?? null;
 }
 
 export function savePendingSale(sale: any): void {
@@ -34,11 +29,7 @@ export function savePendingSale(sale: any): void {
 export function getPendingSales(): any[] {
   const raw = localStorage.getItem(KEYS.pendingSales);
   if (!raw) return [];
-  try {
-    return JSON.parse(raw) as any[];
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(raw) as any[]; } catch { return []; }
 }
 
 export function clearPendingSales(): void {
@@ -54,14 +45,13 @@ export function setLastSyncTime(): void {
 }
 
 export async function isOnline(): Promise<boolean> {
-  const baseUrl = import.meta.env.VITE_API_URL;
-  if (!baseUrl) return false;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://192.168.1.16:5000/api';
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-    await fetch(`${baseUrl}/health`, { signal: controller.signal });
+    const res = await fetch(`${baseUrl}/categories`, { signal: controller.signal, headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
     clearTimeout(timeout);
-    return true;
+    return res.ok;
   } catch {
     return false;
   }

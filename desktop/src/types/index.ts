@@ -115,7 +115,9 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
-  user: User;
+  name: string;
+  email: string;
+  role: string;
 }
 
 export interface CancelledCoupon {

@@ -1,25 +1,21 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
-import { Product, SaleItem } from '../types';
-import { createSale } from '../services/api';
-import {
-  getProductByBarcode,
-  savePendingSale,
-  isOnline as checkOnline,
-  saveProducts,
-} from '../services/offlineStore';
-import axios from 'axios';
+import { Product, Client } from '../types';
+import { createSale, getQueue, enqueueClient, dequeueClient, getStack, getProductsSorted, getProductByBarcode, getCurrentCashRegister } from '../services/api';
+import { getProductByBarcode as getCachedProductByBarcode, savePendingSale, isOnline as checkOnline } from '../services/offlineStore';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
+import { Search, Plus, Minus, X, Users, Ban, ArrowDownAZ, Wifi, WifiOff, UserPlus, UserCheck, Landmark } from 'lucide-react';
 
 interface CartItem {
   product: Product;
   quantity: number;
 }
 
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+const PAYMENT_MAP: Record<string, string> = {
+  'Dinheiro': 'Dinheiro',
+  'Cartão Crédito': 'Credito',
+  'Cartão Débito': 'Debito',
+  'PIX': 'PIX',
+};
 
 export default function PDV() {
   const [barcode, setBarcode] = useState('');
@@ -27,279 +23,409 @@ export default function PDV() {
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
   const [amountReceived, setAmountReceived] = useState('');
-  const [cpf, setCpf] = useState('');
   const [online, setOnline] = useState(true);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
   const barcodeRef = useRef<HTMLInputElement>(null);
 
+  const [queueList, setQueueList] = useState<Client[]>([]);
+  const [queueSize, setQueueSize] = useState(0);
+  const [newClient, setNewClient] = useState('');
+  const [cancelledCount, setCancelledCount] = useState(0);
+  const [sortBy, setSortBy] = useState('');
+  const [productList, setProductList] = useState<Product[]>([]);
+  const [showProducts, setShowProducts] = useState(false);
+  const [cashRegisterId, setCashRegisterId] = useState<number | null>(null);
+  const [currentClient, setCurrentClient] = useState<Client | null>(null);
+  const [lastSaleId, setLastSaleId] = useState<number | null>(null);
+  const [cashRegisterOpen, setCashRegisterOpen] = useState(false);
+
   useEffect(() => {
     barcodeRef.current?.focus();
-    const interval = setInterval(async () => {
-      setOnline(await checkOnline());
-    }, 10000);
+    const interval = setInterval(async () => { setOnline(await checkOnline()); }, 10000);
     checkOnline().then(setOnline);
+    loadQueue();
+    loadCancelledCount();
+    loadCashRegister();
     return () => clearInterval(interval);
   }, []);
 
+  async function loadCashRegister() {
+    const reg = await getCurrentCashRegister();
+    setCashRegisterId(reg?.id ?? null);
+    setCashRegisterOpen(!!reg);
+  }
+
   const total = cart.reduce((s, i) => s + i.product.salePrice * i.quantity, 0);
-  const finalTotal = total * (1 - discount / 100);
-  const change = paymentMethod === 'Dinheiro' && amountReceived
-    ? parseFloat(amountReceived) - finalTotal
-    : 0;
+  const finalTotal = total - discount;
+  const change = paymentMethod === 'Dinheiro' && amountReceived ? parseFloat(amountReceived) - finalTotal : 0;
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  async function loadQueue() {
+    try {
+      const data = await getQueue();
+      setQueueList(data.clients || []);
+      setQueueSize(data.count || 0);
+    } catch {}
+  }
+
+  async function handleEnqueue() {
+    const val = newClient.trim();
+    if (!val) return;
+    const id = parseInt(val);
+    if (isNaN(id)) { showMsg('Informe o ID numérico do cliente.', 'error'); return; }
+    try {
+      await enqueueClient(id);
+      setNewClient('');
+      await loadQueue();
+      showMsg('Cliente adicionado à fila.', 'success');
+    } catch {
+      showMsg('Erro ao adicionar cliente à fila.', 'error');
+    }
+  }
+
+  async function handleDequeue() {
+    try {
+      const result = await dequeueClient();
+      await loadQueue();
+      // The dequeued client becomes the current client for the next sale
+      if (result && result.client) {
+        setCurrentClient(result.client);
+        showMsg(`Atendendo: ${result.client.name}`, 'success');
+      } else {
+        setCurrentClient(null);
+        showMsg('Próximo cliente chamado.', 'success');
+      }
+    } catch {
+      showMsg('Fila vazia.', 'error');
+    }
+  }
+
+  async function loadCancelledCount() {
+    try { const data = await getStack(); setCancelledCount(data.size || 0); } catch {}
+  }
+
+  async function handleSortProducts(field: string) {
+    setSortBy(field);
+    try { const data = await getProductsSorted(field); setProductList(data); setShowProducts(true); } catch { showMsg('Erro ao ordenar produtos.', 'error'); }
+  }
+
+  function addProductFromList(product: Product) {
+    setCart((prev) => {
+      const idx = prev.findIndex((i) => i.product.id === product.id);
+      if (idx >= 0) { const u = [...prev]; u[idx] = { ...u[idx], quantity: u[idx].quantity + 1 }; return u; }
+      return [...prev, { product, quantity: 1 }];
+    });
+    showMsg(`${product.name} adicionado.`, 'success');
+  }
 
   async function searchProduct(e: FormEvent) {
     e.preventDefault();
     if (!barcode.trim()) return;
-
     let product: Product | null = null;
-
     if (online) {
       try {
-        const resp = await api.get<Product[]>('/products', { params: { barcode: barcode.trim() } });
-        if (resp.data.length > 0) {
-          product = resp.data[0];
-          saveProducts(resp.data);
-        }
+        product = await getProductByBarcode(barcode.trim());
       } catch {
-        product = getProductByBarcode(barcode.trim());
+        product = getCachedProductByBarcode(barcode.trim());
       }
     } else {
-      product = getProductByBarcode(barcode.trim());
+      product = getCachedProductByBarcode(barcode.trim());
     }
-
-    if (!product) {
-      showMessage('Produto nao encontrado.', 'error');
-      setBarcode('');
-      return;
-    }
-
+    if (!product) { showMsg('Produto não encontrado.', 'error'); setBarcode(''); return; }
     setCart((prev) => {
       const idx = prev.findIndex((i) => i.product.id === product!.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
-        return updated;
-      }
-      return [...prev, { product, quantity: 1 }];
+      if (idx >= 0) { const u = [...prev]; u[idx] = { ...u[idx], quantity: u[idx].quantity + 1 }; return u; }
+      return [...prev, { product: product!, quantity: 1 }];
     });
-
     setBarcode('');
     barcodeRef.current?.focus();
   }
 
   function changeQty(idx: number, delta: number) {
-    setCart((prev) => {
-      const updated = [...prev];
-      const newQty = updated[idx].quantity + delta;
-      if (newQty <= 0) return updated.filter((_, i) => i !== idx);
-      updated[idx] = { ...updated[idx], quantity: newQty };
-      return updated;
-    });
+    setCart((prev) => { const u = [...prev]; const n = u[idx].quantity + delta; if (n <= 0) return u.filter((_, i) => i !== idx); u[idx] = { ...u[idx], quantity: n }; return u; });
   }
-
-  function removeItem(idx: number) {
-    setCart((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function showMessage(msg: string, type: 'success' | 'error') {
-    setMessage(msg);
-    setMessageType(type);
-    setTimeout(() => setMessage(''), 4000);
-  }
+  function removeItem(idx: number) { setCart((prev) => prev.filter((_, i) => i !== idx)); }
+  function showMsg(msg: string, type: 'success' | 'error') { setMessage(msg); setMessageType(type); setTimeout(() => setMessage(''), 4000); }
 
   async function finalizeSale() {
     if (cart.length === 0) return;
+    if (!cashRegisterId) {
+      showMsg('Abra o caixa antes de finalizar a venda.', 'error');
+      return;
+    }
+
+    const backendMethod = PAYMENT_MAP[paymentMethod] || paymentMethod;
+    const paid = paymentMethod === 'Dinheiro' ? parseFloat(amountReceived) || finalTotal : finalTotal;
 
     const saleData = {
-      items: cart.map((i) => ({
-        productId: i.product.id,
-        quantity: i.quantity,
-        unitPrice: i.product.salePrice,
-        subtotal: i.product.salePrice * i.quantity,
-      })),
-      total,
+      cashRegisterId,
+      clientId: currentClient?.id || undefined,
+      items: cart.map((i) => ({ productId: i.product.id, quantity: i.quantity })),
       discount,
-      finalTotal,
-      payment: {
-        method: paymentMethod,
-        amount: paymentMethod === 'Dinheiro' ? parseFloat(amountReceived) || finalTotal : finalTotal,
-        change: paymentMethod === 'Dinheiro' ? Math.max(change, 0) : 0,
-      },
-      clientCpf: cpf || undefined,
+      paymentMethod: backendMethod,
+      amountPaid: paid,
     };
 
     try {
-      await createSale(saleData);
-      showMessage('Venda finalizada com sucesso!', 'success');
+      const sale = await createSale(saleData);
+      setLastSaleId(sale.id);
+      showMsg(`Venda #${sale.id} finalizada com sucesso!`, 'success');
+      setCurrentClient(null);
     } catch {
       savePendingSale(saleData);
-      showMessage('Venda salva offline. Sera sincronizada quando houver conexao.', 'success');
+      showMsg('Venda salva offline. Será sincronizada quando houver conexão.', 'error');
     }
-
-    setCart([]);
-    setDiscount(0);
-    setPaymentMethod('Dinheiro');
-    setAmountReceived('');
-    setCpf('');
-    barcodeRef.current?.focus();
+    setCart([]); setDiscount(0); setPaymentMethod('Dinheiro'); setAmountReceived(''); barcodeRef.current?.focus();
   }
 
-  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
   return (
-    <div style={styles.root}>
-      <div style={styles.statusBar}>
-        <span style={{ ...styles.statusDot, background: online ? '#4caf50' : '#f44336' }} />
-        <span style={{ fontSize: 13, color: '#555' }}>{online ? 'Online' : 'Offline'}</span>
-        {message && (
-          <span style={{ ...styles.msg, background: messageType === 'success' ? '#e8f5e9' : '#ffebee', color: messageType === 'success' ? '#2e7d32' : '#c62828' }}>
-            {message}
-          </span>
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+      {/* Top bar */}
+      <div className="flex justify-between items-center px-6 py-3 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+        <div className="flex items-center gap-3">
+          {online ? <Wifi className="h-4 w-4 text-green-500" /> : <WifiOff className="h-4 w-4 text-red-500" />}
+          <span className="text-sm text-gray-500 dark:text-gray-400">{online ? 'Online' : 'Offline'}</span>
+          {!cashRegisterId && <span className="ml-2 px-3 py-1 rounded-lg text-xs font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">Caixa fechado</span>}
+          {message && (
+            <span className={`ml-3 px-3 py-1 rounded-lg text-xs font-medium ${messageType === 'success' ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+              {message}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30">
+            <Users className="h-4 w-4 text-indigo-500" />
+            <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">Fila: {queueSize}</span>
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl ${cancelledCount > 0 ? 'bg-red-50 dark:bg-red-900/30' : 'bg-gray-50 dark:bg-gray-700'}`}>
+            <Ban className="h-4 w-4" style={{ color: cancelledCount > 0 ? '#ef4444' : '#9ca3af' }} />
+            <span className={`text-xs font-semibold ${cancelledCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>Cancelamentos: {cancelledCount}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Sale Info Bar */}
+      <div className="flex items-center gap-4 px-6 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700 text-sm">
+        <span className="text-gray-500 dark:text-gray-400">
+          Venda: <span className="font-semibold text-gray-800 dark:text-white">#{lastSaleId ? lastSaleId + 1 : 1}</span>
+        </span>
+        <span className="text-gray-300 dark:text-gray-600">|</span>
+        <span className="text-gray-500 dark:text-gray-400">
+          Cliente: <span className="font-semibold text-gray-800 dark:text-white">{currentClient ? currentClient.name : 'Venda avulsa'}</span>
+        </span>
+        {currentClient && (
+          <button onClick={() => setCurrentClient(null)} className="text-xs text-red-500 hover:text-red-700">(remover)</button>
         )}
       </div>
 
-      <div style={styles.body}>
-        <div style={styles.left}>
-          <form onSubmit={searchProduct} style={styles.searchRow}>
-            <input
-              ref={barcodeRef}
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Codigo de barras"
-              style={styles.searchInput}
-              autoFocus
-            />
-            <button type="submit" style={styles.searchBtn}>Buscar</button>
-          </form>
+      {!cashRegisterOpen && (
+        <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="text-center">
+            <Landmark className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">Caixa Fechado</h3>
+            <p className="text-sm text-gray-400 mb-4">Abra o caixa para iniciar as vendas</p>
+            <a href="/cash-register" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors inline-block">
+              Abrir Caixa
+            </a>
+          </div>
+        </div>
+      )}
 
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Produto</th>
-                  <th style={{ ...styles.th, width: 80, textAlign: 'center' }}>Qtd</th>
-                  <th style={{ ...styles.th, width: 100, textAlign: 'right' }}>Preco Unit.</th>
-                  <th style={{ ...styles.th, width: 100, textAlign: 'right' }}>Subtotal</th>
-                  <th style={{ ...styles.th, width: 110, textAlign: 'center' }}>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
+      {cashRegisterOpen && <div className="flex flex-1 overflow-hidden">
+        {/* Left - Cart */}
+        <div className="flex-[7] flex flex-col p-4 gap-3">
+          {/* Search + Sort */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+            <form onSubmit={searchProduct} className="flex gap-2 mb-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  ref={barcodeRef}
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Código de barras"
+                  className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-10 pr-4 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  autoFocus
+                />
+              </div>
+              <button type="submit" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium shadow-sm hover:bg-indigo-700 transition-colors">
+                Buscar
+              </button>
+            </form>
+            <div className="flex items-center gap-2 flex-wrap">
+              <ArrowDownAZ className="h-4 w-4 text-gray-400" />
+              <span className="text-xs text-gray-400">Ordenar:</span>
+              {['name', 'salePrice', 'currentStock'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => handleSortProducts(f)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    sortBy === f ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700' : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {f === 'name' ? 'Nome' : f === 'salePrice' ? 'Preço' : 'Estoque'}
+                </button>
+              ))}
+              {showProducts && (
+                <button onClick={() => setShowProducts(false)} className="px-3 py-1 rounded-lg text-xs font-medium bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600">
+                  Fechar Lista
+                </button>
+              )}
+            </div>
+          </div>
+
+          {showProducts && productList.length > 0 && (
+            <div className="max-h-48 overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow><TableHead>Produto</TableHead><TableHead className="text-right w-24">Preço</TableHead><TableHead className="text-center w-20">Estoque</TableHead><TableHead className="text-center w-20">Ação</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                  {productList.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium text-gray-900 dark:text-white">{p.name}</TableCell>
+                      <TableCell className="text-right">{fmt(p.salePrice)}</TableCell>
+                      <TableCell className="text-center">{p.currentStock}</TableCell>
+                      <TableCell className="text-center">
+                        <button onClick={() => addProductFromList(p)} className="p-1.5 rounded-lg bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors">
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Cart table */}
+          <div className="flex-1 overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-center w-20">Qtd</TableHead>
+                  <TableHead className="text-right w-28">Preço Unit.</TableHead>
+                  <TableHead className="text-right w-28">Subtotal</TableHead>
+                  <TableHead className="text-center w-28">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {cart.length === 0 && (
-                  <tr><td colSpan={5} style={styles.empty}>Nenhum item adicionado</td></tr>
+                  <tr><td colSpan={5} className="text-center py-12 text-sm text-gray-400">Nenhum item adicionado</td></tr>
                 )}
                 {cart.map((item, idx) => (
-                  <tr key={item.product.id}>
-                    <td style={styles.td}>{item.product.name}</td>
-                    <td style={{ ...styles.td, textAlign: 'center' }}>{item.quantity}</td>
-                    <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(item.product.salePrice)}</td>
-                    <td style={{ ...styles.td, textAlign: 'right' }}>{fmt(item.product.salePrice * item.quantity)}</td>
-                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <button onClick={() => changeQty(idx, -1)} style={styles.qtyBtn}>-</button>
-                      <button onClick={() => changeQty(idx, 1)} style={styles.qtyBtn}>+</button>
-                      <button onClick={() => removeItem(idx)} style={styles.removeBtn}>X</button>
-                    </td>
-                  </tr>
+                  <TableRow key={item.product.id}>
+                    <TableCell className="font-medium text-gray-900 dark:text-white">{item.product.name}</TableCell>
+                    <TableCell className="text-center">{item.quantity}</TableCell>
+                    <TableCell className="text-right">{fmt(item.product.salePrice)}</TableCell>
+                    <TableCell className="text-right font-medium">{fmt(item.product.salePrice * item.quantity)}</TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => changeQty(idx, -1)} className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"><Minus className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => changeQty(idx, 1)} className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"><Plus className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => removeItem(idx)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"><X className="h-3.5 w-3.5" /></button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
 
-        <div style={styles.right}>
-          <h3 style={styles.summaryTitle}>Resumo da Venda</h3>
+        {/* Right - Summary */}
+        <div className="flex-[3] bg-white dark:bg-gray-800 border-l border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-4 overflow-y-auto">
+          {/* Queue */}
+          <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4">
+            <h4 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mb-3 flex items-center gap-2">
+              <Users className="h-4 w-4" /> Fila de Clientes ({queueSize})
+            </h4>
+            <div className="flex gap-2 mb-2">
+              <input
+                value={newClient}
+                onChange={(e) => setNewClient(e.target.value)}
+                placeholder="ID do cliente"
+                className="flex-1 rounded-lg border border-indigo-200 dark:border-indigo-700 py-2 px-3 text-xs text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:border-indigo-500 focus:outline-none bg-white dark:bg-gray-700"
+                onKeyDown={(e) => e.key === 'Enter' && handleEnqueue()}
+              />
+              <button onClick={handleEnqueue} className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-700 transition-colors">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              onClick={handleDequeue}
+              disabled={queueSize === 0}
+              className="w-full py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <UserCheck className="h-4 w-4" /> Chamar Próximo
+            </button>
+            {queueList.length > 0 && (
+              <div className="mt-2 max-h-20 overflow-auto bg-white dark:bg-gray-700 rounded-lg p-2">
+                {queueList.map((c, i) => (
+                  <div key={c.id || i} className="text-xs text-gray-600 dark:text-gray-300 py-0.5"><span className="text-gray-400">{i + 1}.</span> {c.name}</div>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <div style={styles.row}><span>Total:</span><span style={styles.totalValue}>{fmt(total)}</span></div>
+          <div className="border-b border-gray-100 dark:border-gray-700" />
 
-          <label style={styles.label}>Desconto (%)</label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={discount}
-            onChange={(e) => setDiscount(Number(e.target.value))}
-            style={styles.sideInput}
-          />
+          <h3 className="text-lg font-bold text-gray-800 dark:text-white">Resumo da Venda</h3>
 
-          <div style={styles.row}><span>Total Final:</span><span style={styles.finalValue}>{fmt(finalTotal)}</span></div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-500 dark:text-gray-400">Total</span>
+            <span className="text-xl font-bold text-gray-800 dark:text-white">{fmt(total)}</span>
+          </div>
 
-          <label style={styles.label}>Forma de Pagamento</label>
-          <select
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-            style={styles.sideInput}
-          >
-            <option>Dinheiro</option>
-            <option>Cartao Credito</option>
-            <option>Cartao Debito</option>
-            <option>PIX</option>
-          </select>
+          <div>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Desconto (R$)</label>
+            <input type="number" min={0} value={discount} onChange={(e) => setDiscount(Number(e.target.value))}
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 px-3 text-sm text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total Final</span>
+            <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{fmt(finalTotal)}</span>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Forma de Pagamento</label>
+            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 px-3 text-sm text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option>Dinheiro</option>
+              <option>Cartão Crédito</option>
+              <option>Cartão Débito</option>
+              <option>PIX</option>
+            </select>
+          </div>
 
           {paymentMethod === 'Dinheiro' && (
-            <>
-              <label style={styles.label}>Valor Recebido</label>
-              <input
-                type="number"
-                step="0.01"
-                value={amountReceived}
-                onChange={(e) => setAmountReceived(e.target.value)}
-                style={styles.sideInput}
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Valor Recebido</label>
+              <input type="number" step="0.01" value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 px-3 text-sm text-gray-700 dark:text-gray-200 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               {amountReceived && (
-                <div style={{ ...styles.row, color: change < 0 ? '#c62828' : '#2e7d32' }}>
-                  <span>Troco:</span><span>{fmt(Math.max(change, 0))}</span>
+                <div className={`flex justify-between items-center mt-2 text-sm font-medium ${change < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <span>Troco</span><span>{fmt(Math.max(change, 0))}</span>
                 </div>
               )}
-            </>
+            </div>
           )}
-
-          <label style={styles.label}>CPF do Cliente (opcional)</label>
-          <input
-            value={cpf}
-            onChange={(e) => setCpf(e.target.value)}
-            placeholder="000.000.000-00"
-            style={styles.sideInput}
-          />
 
           <button
             onClick={finalizeSale}
             disabled={cart.length === 0}
-            style={{
-              ...styles.finalizeBtn,
-              opacity: cart.length === 0 ? 0.5 : 1,
-            }}
+            className="mt-auto w-full py-3.5 bg-green-600 text-white rounded-xl text-sm font-semibold shadow-sm hover:bg-green-700 transition-colors disabled:opacity-50"
           >
             Finalizar Venda
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  root: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#f5f5f5' },
-  statusBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: '#fff', borderBottom: '1px solid #e0e0e0' },
-  statusDot: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
-  msg: { marginLeft: 'auto', padding: '4px 12px', borderRadius: 4, fontSize: 13 },
-  body: { display: 'flex', flex: 1, overflow: 'hidden' },
-  left: { flex: 7, display: 'flex', flexDirection: 'column', padding: 16, gap: 12 },
-  right: { flex: 3, background: '#fff', padding: 20, borderLeft: '1px solid #e0e0e0', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' },
-  searchRow: { display: 'flex', gap: 8 },
-  searchInput: { flex: 1, padding: '10px 14px', border: '1px solid #ddd', borderRadius: 4, fontSize: 15 },
-  searchBtn: { padding: '10px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: 4, fontSize: 14, cursor: 'pointer' },
-  tableWrap: { flex: 1, overflow: 'auto', background: '#fff', borderRadius: 6, border: '1px solid #e0e0e0' },
-  table: { width: '100%', borderCollapse: 'collapse' as const },
-  th: { textAlign: 'left' as const, padding: '10px 12px', background: '#fafafa', borderBottom: '2px solid #e0e0e0', fontSize: 13, fontWeight: 600, color: '#555' },
-  td: { padding: '10px 12px', borderBottom: '1px solid #f0f0f0', fontSize: 14 },
-  empty: { textAlign: 'center' as const, padding: 40, color: '#999', fontSize: 14 },
-  qtyBtn: { width: 28, height: 28, margin: '0 2px', border: '1px solid #ddd', borderRadius: 4, background: '#fafafa', cursor: 'pointer', fontSize: 14, fontWeight: 700 },
-  removeBtn: { width: 28, height: 28, margin: '0 2px', border: 'none', borderRadius: 4, background: '#ffebee', color: '#c62828', cursor: 'pointer', fontSize: 12, fontWeight: 700 },
-  summaryTitle: { margin: 0, fontSize: 18, color: '#333', borderBottom: '1px solid #e0e0e0', paddingBottom: 10 },
-  row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 15, fontWeight: 500 },
-  totalValue: { fontSize: 18, fontWeight: 700, color: '#333' },
-  finalValue: { fontSize: 22, fontWeight: 700, color: '#2196F3' },
-  label: { fontSize: 13, color: '#666', marginTop: 4 },
-  sideInput: { padding: '8px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 14 },
-  finalizeBtn: { marginTop: 'auto', padding: '14px 0', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, fontSize: 16, fontWeight: 600, cursor: 'pointer' },
-};

@@ -14,6 +14,14 @@ public class CashRegisterController : ControllerBase
 
     public CashRegisterController(ICashRegisterService cashRegisterService) => _cashRegisterService = cashRegisterService;
 
+    [HttpGet("history")]
+    public async Task<IActionResult> GetHistory()
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var registers = await _cashRegisterService.GetHistory(userId);
+        return Ok(registers);
+    }
+
     [HttpPost("open")]
     public async Task<IActionResult> Open([FromBody] OpenCashRegisterRequest request)
     {

@@ -14,7 +14,7 @@ public class ProductService : IProductService
 
     public async Task<List<Product>> GetAll(string? search, int? categoryId, string? sortBy, string? sortAlgorithm)
     {
-        var query = _db.Products.Include(p => p.Category).Where(p => p.Active).AsQueryable();
+        var query = _db.Products.Include(p => p.Category).Include(p => p.Supplier).Where(p => p.Active).AsQueryable();
 
         if (!string.IsNullOrEmpty(search))
             query = query.Where(p => p.Name.Contains(search) || p.Barcode.Contains(search));
@@ -40,10 +40,10 @@ public class ProductService : IProductService
     }
 
     public async Task<Product?> GetById(int id)
-        => await _db.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id);
+        => await _db.Products.Include(p => p.Category).Include(p => p.Supplier).FirstOrDefaultAsync(p => p.Id == id);
 
     public async Task<Product?> GetByBarcode(string barcode)
-        => await _db.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Barcode == barcode);
+        => await _db.Products.Include(p => p.Category).Include(p => p.Supplier).FirstOrDefaultAsync(p => p.Barcode == barcode);
 
     public async Task<Product> Create(ProductDto dto)
     {

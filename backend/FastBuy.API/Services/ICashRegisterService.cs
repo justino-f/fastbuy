@@ -9,4 +9,5 @@ public interface ICashRegisterService
     Task<CashRegister?> GetCurrent(int userId);
     Task Sangria(int id, decimal amount, string reason);
     Task Suprimento(int id, decimal amount, string reason);
+    Task<List<CashRegister>> GetHistory(int userId);
 }

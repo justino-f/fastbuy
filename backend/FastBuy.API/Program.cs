@@ -94,6 +94,17 @@ try
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+
+    try
+    {
+        db.Database.ExecuteSqlRaw(@"
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='Products' AND column_name='SupplierId') THEN
+                    ALTER TABLE ""Products"" ADD COLUMN ""SupplierId"" INTEGER REFERENCES ""Suppliers""(""Id"") ON DELETE SET NULL;
+                END IF;
+            END $$;");
+    }
+    catch { }
 }
 catch (Exception ex)
 {

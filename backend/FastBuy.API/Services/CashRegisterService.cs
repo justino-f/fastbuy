@@ -62,4 +62,11 @@ public class CashRegisterService : ICashRegisterService
         register.OpeningBalance += amount;
         await _db.SaveChangesAsync();
     }
+
+    public async Task<List<CashRegister>> GetHistory(int userId)
+        => await _db.CashRegisters
+            .Where(c => c.UserId == userId)
+            .OrderByDescending(c => c.OpenedAt)
+            .Take(20)
+            .ToListAsync();
 }
