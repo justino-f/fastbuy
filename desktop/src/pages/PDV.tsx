@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, FormEvent } from 'react';
-import { Product, Client } from '../types';
-import { createSale, getQueue, enqueueClient, dequeueClient, getStack, getProductsSorted, getProductByBarcode, getCurrentCashRegister } from '../services/api';
+import { Product, Client, Sale } from '../types';
+import { createSale, getSales, cancelSale, getQueue, enqueueClient, dequeueClient, getStack, getProductsSorted, getProductByBarcode, getCurrentCashRegister } from '../services/api';
 import { getProductByBarcode as getCachedProductByBarcode, savePendingSale, isOnline as checkOnline } from '../services/offlineStore';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
-import { Search, Plus, Minus, X, Users, Ban, ArrowDownAZ, Wifi, WifiOff, UserPlus, UserCheck, Landmark } from 'lucide-react';
+import { Search, Plus, Minus, X, Users, Ban, ArrowDownAZ, Wifi, WifiOff, UserPlus, UserCheck, Landmark, Receipt, XCircle } from 'lucide-react';
 
 interface CartItem {
   product: Product;
@@ -39,6 +39,10 @@ export default function PDV() {
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
   const [lastSaleId, setLastSaleId] = useState<number | null>(null);
   const [cashRegisterOpen, setCashRegisterOpen] = useState(false);
+  const [recentSales, setRecentSales] = useState<Sale[]>([]);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [rightTab, setRightTab] = useState<'sale' | 'coupons'>('sale');
 
   useEffect(() => {
     barcodeRef.current?.focus();
@@ -47,6 +51,7 @@ export default function PDV() {
     loadQueue();
     loadCancelledCount();
     loadCashRegister();
+    loadRecentSales();
     return () => clearInterval(interval);
   }, []);
 
@@ -88,16 +93,33 @@ export default function PDV() {
     try {
       const result = await dequeueClient();
       await loadQueue();
-      // The dequeued client becomes the current client for the next sale
-      if (result && result.client) {
-        setCurrentClient(result.client);
-        showMsg(`Atendendo: ${result.client.name}`, 'success');
+      if (result && result.id && result.name) {
+        setCurrentClient(result as Client);
+        showMsg(`Atendendo: ${result.name}`, 'success');
       } else {
         setCurrentClient(null);
         showMsg('Próximo cliente chamado.', 'success');
       }
     } catch {
       showMsg('Fila vazia.', 'error');
+    }
+  }
+
+  async function loadRecentSales() {
+    try { const data = await getSales(); setRecentSales(data.slice(0, 20)); } catch {}
+  }
+
+  async function handleCancelSale() {
+    if (!cancellingId || !cancelReason.trim()) return;
+    try {
+      await cancelSale(cancellingId, cancelReason.trim());
+      showMsg(`Cupom #${cancellingId} cancelado.`, 'success');
+      setCancellingId(null);
+      setCancelReason('');
+      await loadRecentSales();
+      await loadCancelledCount();
+    } catch {
+      showMsg('Erro ao cancelar cupom.', 'error');
     }
   }
 
@@ -177,6 +199,7 @@ export default function PDV() {
       showMsg('Venda salva offline. Será sincronizada quando houver conexão.', 'error');
     }
     setCart([]); setDiscount(0); setPaymentMethod('Dinheiro'); setAmountReceived(''); barcodeRef.current?.focus();
+    loadRecentSales();
   }
 
   return (
@@ -337,6 +360,65 @@ export default function PDV() {
 
         {/* Right - Summary */}
         <div className="flex-[3] bg-white dark:bg-gray-800 border-l border-gray-100 dark:border-gray-700 p-5 flex flex-col gap-4 overflow-y-auto">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-1">
+            <button onClick={() => setRightTab('sale')} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${rightTab === 'sale' ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>Venda</button>
+            <button onClick={() => setRightTab('coupons')} className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${rightTab === 'coupons' ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+              <Receipt className="h-3 w-3" /> Cupons
+            </button>
+          </div>
+
+          {rightTab === 'coupons' && (
+            <div className="flex flex-col gap-3 flex-1 overflow-y-auto">
+              <h4 className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-indigo-500" /> Vendas Recentes (Cupons)
+              </h4>
+              {cancellingId && (
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2">
+                  <p className="text-xs text-red-700 dark:text-red-400 font-medium">Cancelar cupom #{cancellingId}</p>
+                  <input
+                    value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+                    placeholder="Motivo do cancelamento"
+                    className="w-full rounded-lg border border-red-200 dark:border-red-700 py-2 px-3 text-xs bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
+                    onKeyDown={(e) => e.key === 'Enter' && handleCancelSale()}
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={handleCancelSale} disabled={!cancelReason.trim()} className="flex-1 py-1.5 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 disabled:opacity-50">Confirmar</button>
+                    <button onClick={() => { setCancellingId(null); setCancelReason(''); }} className="flex-1 py-1.5 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-medium hover:bg-gray-300 dark:hover:bg-gray-500">Voltar</button>
+                  </div>
+                </div>
+              )}
+              {recentSales.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">Nenhuma venda registrada</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {recentSales.map((s) => (
+                    <div key={s.id} className={`rounded-xl p-3 border text-xs ${s.status === 'Cancelada' ? 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30' : 'bg-gray-50 dark:bg-gray-700/50 border-gray-100 dark:border-gray-600'}`}>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="font-semibold text-gray-800 dark:text-white">#{s.id}</span>
+                          <span className="ml-2 text-gray-400">{new Date(s.createdAt).toLocaleString('pt-BR')}</span>
+                        </div>
+                        <span className="font-bold text-gray-800 dark:text-white">{fmt(s.finalTotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-1.5">
+                        <span className={`px-2 py-0.5 rounded-full font-medium ${s.status === 'Cancelada' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'}`}>
+                          {s.status === 'Cancelada' ? 'Cancelado' : 'Ativo'}
+                        </span>
+                        {s.status !== 'Cancelada' && (
+                          <button onClick={() => setCancellingId(s.id)} className="flex items-center gap-1 text-red-500 hover:text-red-700 font-medium">
+                            <XCircle className="h-3 w-3" /> Cancelar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {rightTab === 'sale' && <>
           {/* Queue */}
           <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4">
             <h4 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 mb-3 flex items-center gap-2">
@@ -424,6 +506,7 @@ export default function PDV() {
           >
             Finalizar Venda
           </button>
+          </>}
         </div>
       </div>}
     </div>

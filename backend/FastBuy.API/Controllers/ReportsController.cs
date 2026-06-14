@@ -18,8 +18,8 @@ public class ReportsController : ControllerBase
     [HttpGet("sales")]
     public async Task<IActionResult> SalesReport([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
-        var start = startDate ?? DateTime.UtcNow.AddDays(-30);
-        var end = endDate ?? DateTime.UtcNow;
+        var start = DateTime.SpecifyKind(startDate ?? DateTime.UtcNow.AddDays(-30), DateTimeKind.Utc);
+        var end = DateTime.SpecifyKind(endDate ?? DateTime.UtcNow, DateTimeKind.Utc);
 
         var sales = await _db.Sales
             .Include(s => s.Client)
@@ -29,16 +29,17 @@ public class ReportsController : ControllerBase
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync();
 
+        var active = sales.Where(s => s.Status != "Cancelada").ToList();
         var summary = new
         {
             TotalSales = sales.Count,
-            TotalRevenue = sales.Where(s => s.Status != "Cancelada").Sum(s => s.FinalTotal),
-            TotalCancelled = sales.Count(s => s.Status == "Cancelada"),
-            AverageTicket = sales.Where(s => s.Status != "Cancelada").DefaultIfEmpty().Average(s => s?.FinalTotal ?? 0),
-            ByPaymentMethod = sales.Where(s => s.Payment != null && s.Status != "Cancelada")
+            TotalRevenue = active.Sum(s => s.FinalTotal),
+            TotalCancelled = sales.Count - active.Count,
+            AverageTicket = active.Count > 0 ? active.Average(s => s.FinalTotal) : 0m,
+            ByPaymentMethod = active.Where(s => s.Payment != null)
                 .GroupBy(s => s.Payment!.Method)
                 .Select(g => new { Method = g.Key, Count = g.Count(), Total = g.Sum(s => s.FinalTotal) }),
-            ByDay = sales.Where(s => s.Status != "Cancelada")
+            ByDay = active
                 .GroupBy(s => s.CreatedAt.Date)
                 .Select(g => new { Date = g.Key, Count = g.Count(), Total = g.Sum(s => s.FinalTotal) })
                 .OrderBy(x => x.Date),
@@ -56,8 +57,8 @@ public class ReportsController : ControllerBase
     [HttpGet("cash-registers")]
     public async Task<IActionResult> CashRegisterReport([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
-        var start = startDate ?? DateTime.UtcNow.AddDays(-30);
-        var end = endDate ?? DateTime.UtcNow;
+        var start = DateTime.SpecifyKind(startDate ?? DateTime.UtcNow.AddDays(-30), DateTimeKind.Utc);
+        var end = DateTime.SpecifyKind(endDate ?? DateTime.UtcNow, DateTimeKind.Utc);
 
         var registers = await _db.CashRegisters
             .Include(c => c.Sales)
@@ -65,12 +66,15 @@ public class ReportsController : ControllerBase
             .OrderByDescending(c => c.OpenedAt)
             .ToListAsync();
 
-        var result = registers.Select(r => new
-        {
-            r.Id, r.UserId, r.OpeningBalance, r.ClosingBalance, r.Status,
-            r.OpenedAt, r.ClosedAt,
-            SalesCount = r.Sales.Count(s => s.Status != "Cancelada"),
-            SalesTotal = r.Sales.Where(s => s.Status != "Cancelada").Sum(s => s.FinalTotal)
+        var result = registers.Select(r => {
+            var activeSales = r.Sales.Where(s => s.Status != "Cancelada").ToList();
+            return new
+            {
+                r.Id, r.UserId, r.OpeningBalance, r.ClosingBalance, r.Status,
+                r.OpenedAt, r.ClosedAt,
+                SalesCount = activeSales.Count,
+                SalesTotal = activeSales.Sum(s => s.FinalTotal)
+            };
         });
 
         return Ok(new

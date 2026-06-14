@@ -52,8 +52,14 @@ public class DataStructuresController : ControllerBase
         => Ok(new { count = _clientQueue.Count, clients = _clientQueue.GetQueue() });
 
     [HttpGet("stack")]
-    public IActionResult GetStack()
-        => Ok(new { count = _couponStack.Count, coupons = _couponStack.GetAll() });
+    public async Task<IActionResult> GetStack()
+    {
+        var dbCoupons = await _db.CancelledCoupons
+            .OrderByDescending(c => c.CancelledAt)
+            .Take(50)
+            .ToListAsync();
+        return Ok(new { size = dbCoupons.Count, stack = dbCoupons });
+    }
 
     [HttpGet("stack/peek")]
     public IActionResult PeekStack()

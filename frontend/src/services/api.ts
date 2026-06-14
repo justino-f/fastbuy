@@ -121,6 +121,15 @@ export const dataStructures = {
     api.get('/data-structures/sort', { params }),
 };
 
+export const reports = {
+  sales: (startDate: string, endDate: string) =>
+    api.get('/reports/sales', { params: { startDate, endDate } }),
+  cashRegisters: (startDate: string, endDate: string) =>
+    api.get('/reports/cash-registers', { params: { startDate, endDate } }),
+  products: () => api.get('/reports/products'),
+  suppliers: () => api.get('/reports/suppliers'),
+};
+
 export const payment = {
   process: (data: { saleId: number; method: string; amount: number }) =>
     api.post('/payment/process', data),

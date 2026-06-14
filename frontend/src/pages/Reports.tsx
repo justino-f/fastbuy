@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { FileText, DollarSign, Package, Truck, Landmark } from 'lucide-react';
+import { DollarSign, Package, Truck, Landmark } from 'lucide-react';
+import { reports } from '../services/api';
 
 const TABS = [
   { key: 'sales', label: 'Vendas', icon: DollarSign },
@@ -21,25 +22,16 @@ export default function Reports() {
   const [period, setPeriod] = useState(30);
   const [loading, setLoading] = useState(false);
 
-  const apiBase = import.meta.env.VITE_API_URL || '/api';
-  const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
-
-  async function fetchReport(endpoint: string) {
-    const res = await fetch(`${apiBase}${endpoint}`, { headers: headers() });
-    if (!res.ok) throw new Error('Erro');
-    return res.json();
-  }
-
   useEffect(() => {
     setLoading(true);
     const start = new Date(); start.setDate(start.getDate() - period);
     const startStr = start.toISOString().split('T')[0];
     const endStr = new Date().toISOString().split('T')[0];
 
-    if (tab === 'sales') fetchReport(`/reports/sales?startDate=${startStr}&endDate=${endStr}`).then(setSalesData).catch(() => {}).finally(() => setLoading(false));
-    else if (tab === 'cash') fetchReport(`/reports/cash-registers?startDate=${startStr}&endDate=${endStr}`).then(setCashData).catch(() => {}).finally(() => setLoading(false));
-    else if (tab === 'products') fetchReport('/reports/products').then(setProductsData).catch(() => {}).finally(() => setLoading(false));
-    else if (tab === 'suppliers') fetchReport('/reports/suppliers').then(setSuppliersData).catch(() => {}).finally(() => setLoading(false));
+    if (tab === 'sales') reports.sales(startStr, endStr).then((r) => setSalesData(r.data)).catch(() => {}).finally(() => setLoading(false));
+    else if (tab === 'cash') reports.cashRegisters(startStr, endStr).then((r) => setCashData(r.data)).catch(() => {}).finally(() => setLoading(false));
+    else if (tab === 'products') reports.products().then((r) => setProductsData(r.data)).catch(() => {}).finally(() => setLoading(false));
+    else if (tab === 'suppliers') reports.suppliers().then((r) => setSuppliersData(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, [tab, period]);
 
   const cardCls = 'bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700';
