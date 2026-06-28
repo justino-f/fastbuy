@@ -1,8 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using FastBuy.API.Data;
-using FastBuy.API.DTOs.Dashboard;
+using FastBuy.API.DTOs;
 
 namespace FastBuy.API.Services;
+
+public interface IDashboardService
+{
+    Task<DashboardDto> GetDashboard();
+}
 
 public class DashboardService : IDashboardService
 {

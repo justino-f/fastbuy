@@ -2,10 +2,18 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using FastBuy.API.Data;
 using FastBuy.API.DataStructures;
-using FastBuy.API.DTOs.Sales;
+using FastBuy.API.DTOs;
 using FastBuy.API.Models;
 
 namespace FastBuy.API.Services;
+
+public interface ISaleService
+{
+    Task<Sale> CreateSale(CreateSaleRequest request, int userId);
+    Task<CancelledCoupon> CancelSale(int saleId, string reason, int userId);
+    Task<List<Sale>> GetSales(DateTime? date, string? status);
+    Task<Sale?> GetById(int id);
+}
 
 public class SaleService : ISaleService
 {
@@ -31,7 +39,6 @@ public class SaleService : ISaleService
         };
 
         decimal total = 0;
-        // Vetor de nomes de produtos (requisito acadêmico - demonstra uso de List<string> como vetor)
         var productNames = new List<string>();
 
         foreach (var item in request.Items)

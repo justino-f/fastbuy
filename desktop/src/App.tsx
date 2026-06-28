@@ -7,7 +7,6 @@ import Login from './pages/Login';
 import PDV from './pages/PDV';
 import CashRegister from './pages/CashRegister';
 import Sales from './pages/Sales';
-import './App.css';
 
 export default function App() {
   return (

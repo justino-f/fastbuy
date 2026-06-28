@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using FastBuy.API.DTOs.Clients;
+using FastBuy.API.DTOs;
 using FastBuy.API.Services;
 
 namespace FastBuy.API.Controllers;

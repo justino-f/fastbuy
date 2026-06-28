@@ -10,3 +10,4 @@ html.dark body { background-color: #111827; color: #f3f4f6; }
 .dark ::-webkit-scrollbar-track { background: #1f2937; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .dark ::-webkit-scrollbar-thumb { background: #4b5563; }
+#app { height: 100vh; }
