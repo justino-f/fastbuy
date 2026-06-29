@@ -48,7 +48,7 @@ Disponivel em `http://localhost:5173`.
 ### Desktop PDV (Tauri)
 
 ```bash
-cd frontend
+cd desktop
 npm install
 npm run tauri dev
 ```
