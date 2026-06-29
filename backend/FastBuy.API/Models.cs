@@ -106,6 +106,8 @@ public class Sale
     // Status: "Concluida" ou "Cancelada"
     public string Status { get; set; } = "Concluida";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // Resumo dos produtos vendidos (nomes separados por vírgula)
+    public string? ProductsSummary { get; set; }
     // Itens da venda — relacionamento 1:N
     public List<SaleItem> Items { get; set; } = new();
     // Pagamento vinculado — relacionamento 1:1

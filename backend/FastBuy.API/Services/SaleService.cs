@@ -51,19 +51,6 @@ public class SaleService : ISaleService
     // 6. Persiste tudo no banco em uma única transação (SaveChanges)
     public async Task<Sale> CreateSale(CreateSaleRequest request, int userId)
     {
-        // Valida todos os itens antes de iniciar a venda
-        var erros = new List<string>();
-        foreach (var item in request.Items)
-        {
-            var product = await _db.Products.FindAsync(item.ProductId);
-            if (product == null)
-                erros.Add($"Produto {item.ProductId} não encontrado");
-            else if (product.CurrentStock < item.Quantity)
-                erros.Add($"Estoque insuficiente: {product.Name} ({product.CurrentStock} disponível)");
-        }
-        if (erros.Count > 0)
-            throw new Exception(string.Join(" | ", erros));
-
         // Cria a entidade Sale com os dados básicos: cliente, operador, caixa e desconto
         var sale = new Sale
         {
@@ -75,6 +62,8 @@ public class SaleService : ISaleService
 
         // Acumulador do valor total da venda antes do desconto
         decimal total = 0;
+        // Armazena o nome de cada produto vendido nesta transação
+        var produtosVendidos = new List<string>();
 
         // Itera cada item do pedido para montar os SaleItems e calcular valores
         foreach (var item in request.Items)
@@ -82,6 +71,8 @@ public class SaleService : ISaleService
             // Busca o produto no banco para obter o preço de venda atual
             var product = await _db.Products.FindAsync(item.ProductId);
             if (product == null) throw new Exception($"Produto {item.ProductId} não encontrado");
+
+            produtosVendidos.Add(product.Name);
 
             // Cria o item de venda com preço unitário capturado no momento da venda (snapshot do preço)
             var saleItem = new SaleItem
@@ -105,6 +96,8 @@ public class SaleService : ISaleService
         sale.Total = total;
         // Total líquido (total bruto menos desconto aplicado)
         sale.FinalTotal = total - request.Discount;
+        // Grava os nomes dos produtos vendidos no resumo da venda
+        sale.ProductsSummary = string.Join(", ", produtosVendidos);
 
         // Strategy Pattern em ação: seleciona o gateway cujo Method corresponde ao solicitado.
         // FirstOrDefault percorre a lista de gateways registrados e encontra o compatível.
