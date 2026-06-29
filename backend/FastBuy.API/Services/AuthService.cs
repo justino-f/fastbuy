@@ -9,12 +9,14 @@ using FastBuy.API.Models;
 
 namespace FastBuy.API.Services;
 
+// Interface do serviço de autenticação — abstrai login e registro
 public interface IAuthService
 {
     Task<LoginResponse?> Login(string email, string password);
     Task<User> Register(string name, string email, string password, string role);
 }
 
+// Serviço de autenticação com JWT (JSON Web Token) e BCrypt para hashing de senha
 public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
@@ -26,9 +28,12 @@ public class AuthService : IAuthService
         _config = config;
     }
 
+    // Autentica usuário: verifica email + senha hash e gera token JWT
     public async Task<LoginResponse?> Login(string email, string password)
     {
+        // Busca usuário ativo pelo email
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email && u.Active);
+        // BCrypt.Verify compara a senha informada com o hash armazenado
         if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
             return null;
 
@@ -42,12 +47,14 @@ public class AuthService : IAuthService
         };
     }
 
+    // Registra novo usuário — apenas Administrador pode chamar (via [Authorize(Roles)])
     public async Task<User> Register(string name, string email, string password, string role)
     {
         var user = new User
         {
             Name = name,
             Email = email,
+            // BCrypt.HashPassword gera salt automático + hash seguro
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Role = role
         };
@@ -56,17 +63,22 @@ public class AuthService : IAuthService
         return user;
     }
 
+    // Gera token JWT com claims do usuário (Id, Name, Email, Role)
+    // Token assinado com HMAC-SHA256 e expiração configurável (padrão 8h)
     private string GenerateToken(User user)
     {
+        // Chave simétrica para assinatura HMAC-SHA256
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var hours = int.Parse(_config["Jwt:ExpirationHours"] ?? "8");
 
+        // Claims incluídas no payload do JWT — acessíveis via User.FindFirst()
         var claims = new[]
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Name),
             new Claim(ClaimTypes.Email, user.Email),
+            // Role é usado pelo middleware [Authorize(Roles = "...")] para controle de acesso
             new Claim(ClaimTypes.Role, user.Role)
         };
 
@@ -77,6 +89,7 @@ public class AuthService : IAuthService
             expires: DateTime.UtcNow.AddHours(hours),
             signingCredentials: creds);
 
+        // Serializa o token para string Base64
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

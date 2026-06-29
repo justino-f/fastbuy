@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { Supplier } from '../types';
 import { suppliers } from '../services/api';
+import { inputCls, labelCls, btnPrimaryCls, btnSecondaryCls } from '@/lib/utils';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 import { Plus, Pencil, Trash2, Truck } from 'lucide-react';
@@ -38,9 +39,6 @@ export default function Suppliers() {
     await suppliers.delete(id);
     load();
   };
-
-  const inputCls = 'w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none';
-  const labelCls = 'text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block';
 
   return (
     <div>
@@ -105,8 +103,8 @@ export default function Suppliers() {
             </div>
           </div>
           <DialogFooter>
-            <button type="button" onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancelar</button>
-            <button type="submit" className="px-5 py-2.5 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Salvar</button>
+            <button type="button" onClick={() => setModalOpen(false)} className={btnSecondaryCls}>Cancelar</button>
+            <button type="submit" className={btnPrimaryCls}>Salvar</button>
           </DialogFooter>
         </form>
       </Dialog>

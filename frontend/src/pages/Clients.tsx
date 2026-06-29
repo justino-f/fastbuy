@@ -1,24 +1,37 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { Client, Sale } from '../types';
 import api, { clients } from '../services/api';
+import { inputCls, labelCls, btnPrimaryCls, btnSecondaryCls } from '@/lib/utils';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/Table';
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/Dialog';
 import { Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp, Users } from 'lucide-react';
 
+// Estado inicial do formulário de cliente
 const emptyForm = { name: '', cpf: '', phone: '', email: '' };
 
+// Página de Clientes — CRUD completo com histórico de compras expansível
+// Padrão: linha clicável expande tabela aninhada com vendas do cliente
 export default function Clients() {
+  // Lista de clientes — populada pela API com filtro de busca
   const [list, setList] = useState<Client[]>([]);
+  // Filtro de busca por nome ou CPF
   const [search, setSearch] = useState('');
+  // Histórico de compras do cliente selecionado
   const [history, setHistory] = useState<Sale[]>([]);
+  // Cliente com histórico expandido (null = nenhum expandido)
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  // Controle do modal de criação/edição
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
 
+  // Carrega lista de clientes — chamada na montagem e após cada CRUD
   const load = () => { clients.getAll(search || undefined).then((r) => setList(r.data)).catch(() => {}); };
+  // Recarrega quando o filtro de busca muda — busca reativa
   useEffect(() => { load(); }, [search]);
 
+  // Toggle do histórico de compras — clique na linha expande/colapsa
+  // Se o cliente já está selecionado, colapsa; senão, busca histórico na API e expande
   const showHistory = async (c: Client) => {
     if (selectedClient?.id === c.id) { setSelectedClient(null); return; }
     const res = await clients.getPurchaseHistory(c.id);
@@ -26,15 +39,19 @@ export default function Clients() {
     setSelectedClient(c);
   };
 
+  // Abre modal para novo cliente — reseta formulário
   const openNew = () => { setEditId(null); setForm(emptyForm); setModalOpen(true); };
+  // Abre modal para edição — preenche formulário com dados do cliente
   const openEdit = (c: Client) => {
     setEditId(c.id);
     setForm({ name: c.name, cpf: c.cpf, phone: c.phone || '', email: c.email || '' });
     setModalOpen(true);
   };
 
+  // Helper para atualizar campos do formulário
   const set = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
 
+  // Submit do formulário — cria ou atualiza conforme editId
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (editId) await clients.update(editId, form);
@@ -43,17 +60,16 @@ export default function Clients() {
     load();
   };
 
+  // Exclusão com confirmação — usa api.delete direto pois o serviço de clients não tem delete
   const handleDelete = async (id: number) => {
     if (!confirm('Deseja realmente excluir este cliente?')) return;
     await api.delete(`/clients/${id}`);
     load();
   };
 
-  const inputCls = 'w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none';
-  const labelCls = 'text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block';
-
   return (
     <div>
+      {/* Cabeçalho com título e botão de novo cliente */}
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Clientes</h2>
         <button onClick={openNew} className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors hover:bg-indigo-700">
@@ -61,6 +77,7 @@ export default function Clients() {
         </button>
       </div>
 
+      {/* Barra de busca — filtro por nome ou CPF */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -69,6 +86,7 @@ export default function Clients() {
         </div>
       </div>
 
+      {/* Tabela de clientes — linhas clicáveis para expandir histórico */}
       <Table>
         <TableHeader>
           <TableRow>
@@ -78,9 +96,11 @@ export default function Clients() {
         <TableBody>
           {list.map((c) => (
             <>
+              {/* Linha principal do cliente — clique abre/fecha histórico de compras */}
               <TableRow key={c.id} className="cursor-pointer" onClick={() => showHistory(c)}>
                 <TableCell className="font-medium text-gray-900 dark:text-white">
                   <div className="flex items-center gap-2">
+                    {/* Ícone de seta — indica visualmente se o histórico está expandido ou colapsado */}
                     {selectedClient?.id === c.id ? <ChevronUp className="h-4 w-4 text-indigo-500" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                     {c.name}
                   </div>
@@ -90,11 +110,14 @@ export default function Clients() {
                 <TableCell>{c.phone}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
+                    {/* stopPropagation evita que o clique nos botões expanda/colapse o histórico */}
                     <button onClick={(e) => { e.stopPropagation(); openEdit(c); }} className="p-1.5 rounded-lg text-gray-400 transition-colors hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"><Pencil className="h-4 w-4" /></button>
                     <button onClick={(e) => { e.stopPropagation(); handleDelete(c.id); }} className="p-1.5 rounded-lg text-gray-400 transition-colors hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </TableCell>
               </TableRow>
+              {/* Linha expandida — tabela aninhada com histórico de compras do cliente */}
+              {/* Renderização condicional: só aparece quando o cliente está selecionado */}
               {selectedClient?.id === c.id && (
                 <tr key={`h-${c.id}`}>
                   <td colSpan={5} className="bg-indigo-50 dark:bg-indigo-900/20 px-6 py-4">
@@ -102,6 +125,7 @@ export default function Clients() {
                     {history.length === 0 ? (
                       <p className="text-sm text-gray-500">Nenhuma compra encontrada.</p>
                     ) : (
+                      // Tabela aninhada inline — exibe vendas vinculadas ao cliente
                       <table className="w-full border-collapse">
                         <thead>
                           <tr>
@@ -131,6 +155,7 @@ export default function Clients() {
         </TableBody>
       </Table>
 
+      {/* Modal de criação/edição de cliente */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -143,6 +168,7 @@ export default function Clients() {
             </div>
           </div>
         </DialogHeader>
+        {/* Formulário de cliente — grid 2 colunas com campos obrigatórios (nome, CPF) */}
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-4">
             <div><label className={labelCls}>Nome</label><input className={inputCls} value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
@@ -151,8 +177,8 @@ export default function Clients() {
             <div><label className={labelCls}>Email</label><input className={inputCls} type="email" value={form.email} onChange={(e) => set('email', e.target.value)} /></div>
           </div>
           <DialogFooter>
-            <button type="button" onClick={() => setModalOpen(false)} className="px-5 py-2.5 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">Cancelar</button>
-            <button type="submit" className="px-5 py-2.5 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Salvar</button>
+            <button type="button" onClick={() => setModalOpen(false)} className={btnSecondaryCls}>Cancelar</button>
+            <button type="submit" className={btnPrimaryCls}>Salvar</button>
           </DialogFooter>
         </form>
       </Dialog>

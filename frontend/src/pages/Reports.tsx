@@ -3,43 +3,55 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, Package, Truck, Landmark } from 'lucide-react';
 import { reports } from '../services/api';
+import { fmt, cardCls } from '@/lib/utils';
 
+// Definição das abas do relatório — cada aba tem chave, label e ícone
 const TABS = [
   { key: 'sales', label: 'Vendas', icon: DollarSign },
   { key: 'cash', label: 'Caixa', icon: Landmark },
   { key: 'products', label: 'Produtos', icon: Package },
   { key: 'suppliers', label: 'Fornecedores', icon: Truck },
 ];
-const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+// Paleta de cores para gráficos de pizza — 6 cores distintas para categorias
+const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+// Página de Relatórios — painel analítico com múltiplas abas e visualizações
+// Abas: Vendas, Caixa, Produtos e Fornecedores
+// Integra Recharts para gráficos de barras e pizza
 export default function Reports() {
+  // Aba ativa — controla qual relatório é exibido
   const [tab, setTab] = useState('sales');
+  // Estado dos dados de cada aba — carregados sob demanda ao selecionar a aba
   const [salesData, setSalesData] = useState<any>(null);
   const [cashData, setCashData] = useState<any>(null);
   const [productsData, setProductsData] = useState<any>(null);
   const [suppliersData, setSuppliersData] = useState<any>(null);
+  // Período de filtro em dias — controla o intervalo de datas da consulta
   const [period, setPeriod] = useState(30);
   const [loading, setLoading] = useState(false);
 
+  // useEffect reage a mudanças de aba ou período — carrega dados do relatório selecionado
   useEffect(() => {
     setLoading(true);
+    // Calcula intervalo de datas: do dia atual menos N dias até hoje
     const start = new Date(); start.setDate(start.getDate() - period);
-    const startStr = start.toISOString().split('T')[0];
+    const startStr = start.toISOString().split('T')[0]; // formato YYYY-MM-DD
     const endStr = new Date().toISOString().split('T')[0];
 
+    // Carrega dados conforme a aba ativa — cada aba chama endpoint diferente
     if (tab === 'sales') reports.sales(startStr, endStr).then((r) => setSalesData(r.data)).catch(() => {}).finally(() => setLoading(false));
     else if (tab === 'cash') reports.cashRegisters(startStr, endStr).then((r) => setCashData(r.data)).catch(() => {}).finally(() => setLoading(false));
     else if (tab === 'products') reports.products().then((r) => setProductsData(r.data)).catch(() => {}).finally(() => setLoading(false));
     else if (tab === 'suppliers') reports.suppliers().then((r) => setSuppliersData(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, [tab, period]);
 
-  const cardCls = 'bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700';
-
   return (
     <div>
+      {/* Cabeçalho com título e seletor de período */}
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Relatórios</h2>
+        {/* Seletor de período — filtra dados por intervalo de dias (7, 30, 90 ou 365) */}
         <select value={period} onChange={(e) => setPeriod(Number(e.target.value))}
           className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
           <option value={7}>Últimos 7 dias</option>
@@ -49,6 +61,7 @@ export default function Reports() {
         </select>
       </div>
 
+      {/* Sistema de abas — navegação entre os 4 tipos de relatório */}
       <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit">
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -61,10 +74,14 @@ export default function Reports() {
         })}
       </div>
 
+      {/* Estado de carregamento */}
       {loading && <p className="text-gray-400 py-8">Carregando...</p>}
 
+      {/* === ABA VENDAS === */}
+      {/* Exibe: KPI cards (total, receita, canceladas, ticket médio) + gráfico de barras por dia + gráfico de pizza por forma de pagamento + tabela detalhada */}
       {!loading && tab === 'sales' && salesData && (
         <div className="space-y-6">
+          {/* Grid de KPI cards — métricas resumidas do período selecionado */}
           <div className="grid grid-cols-4 gap-4">
             {[
               { label: 'Total Vendas', value: salesData.totalSales },
@@ -78,11 +95,14 @@ export default function Reports() {
               </div>
             ))}
           </div>
+          {/* Gráficos lado a lado: barras (vendas por dia) e pizza (por forma de pagamento) */}
           <div className="grid grid-cols-2 gap-6">
+            {/* Gráfico de barras — distribuição diária de vendas no período */}
             <div className={cardCls}>
               <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Vendas por Dia</h3>
               {salesData.byDay?.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
+                  {/* Formata datas para DD/MM antes de renderizar no eixo X */}
                   <BarChart data={salesData.byDay.map((d: any) => ({ ...d, date: new Date(d.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#9ca3af' }} />
@@ -93,12 +113,15 @@ export default function Reports() {
                 </ResponsiveContainer>
               ) : <p className="text-sm text-gray-400 py-8 text-center">Sem dados</p>}
             </div>
+            {/* Gráfico de pizza — proporção de vendas por método de pagamento */}
             <div className={cardCls}>
               <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Por Forma de Pagamento</h3>
               {salesData.byPaymentMethod?.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
+                    {/* Pie com labels que mostram método + percentual */}
                     <Pie data={salesData.byPaymentMethod} dataKey="total" nameKey="method" cx="50%" cy="50%" outerRadius={80} label={({ method, percent }: any) => `${method} ${(percent * 100).toFixed(0)}%`}>
+                      {/* Cada fatia recebe uma cor da paleta COLORS via índice cíclico */}
                       {salesData.byPaymentMethod.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
@@ -107,6 +130,7 @@ export default function Reports() {
               ) : <p className="text-sm text-gray-400 py-8 text-center">Sem dados</p>}
             </div>
           </div>
+          {/* Tabela detalhada de vendas — lista individual de cada transação */}
           <div className={cardCls}>
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Detalhamento</h3>
             <Table>
@@ -118,9 +142,11 @@ export default function Reports() {
                   <TableRow key={s.id}>
                     <TableCell className="font-medium text-gray-800 dark:text-white">#{s.id}</TableCell>
                     <TableCell>{new Date(s.createdAt).toLocaleString('pt-BR')}</TableCell>
+                    {/* "Avulsa" indica venda sem cliente identificado */}
                     <TableCell>{s.clientName || 'Avulsa'}</TableCell>
                     <TableCell>{s.paymentMethod}</TableCell>
                     <TableCell className="text-right">{fmt(s.finalTotal)}</TableCell>
+                    {/* Badge de status — verde para concluída, vermelho para cancelada */}
                     <TableCell className="text-center">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.status === 'Cancelada' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'}`}>
                         {s.status === 'Cancelada' ? 'Cancelada' : 'Concluída'}
@@ -134,12 +160,16 @@ export default function Reports() {
         </div>
       )}
 
+      {/* === ABA CAIXA === */}
+      {/* Exibe: KPIs (aberturas/fechamentos) + tabela de histórico de caixa com saldos */}
       {!loading && tab === 'cash' && cashData && (
         <div className="space-y-6">
+          {/* KPI cards — total de aberturas e fechamentos no período */}
           <div className="grid grid-cols-2 gap-4">
             <div className={cardCls}><div className="text-sm text-gray-400">Aberturas</div><div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">{cashData.totalOpened}</div></div>
             <div className={cardCls}><div className="text-sm text-gray-400">Fechamentos</div><div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">{cashData.totalClosed}</div></div>
           </div>
+          {/* Tabela de histórico de caixa — cada linha é um turno (abertura → fechamento) */}
           <div className={cardCls}>
             <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Histórico de Caixa</h3>
             <Table>
@@ -151,11 +181,13 @@ export default function Reports() {
                   <TableRow key={r.id}>
                     <TableCell className="font-medium text-gray-800 dark:text-white">#{r.id}</TableCell>
                     <TableCell>{new Date(r.openedAt).toLocaleString('pt-BR')}</TableCell>
+                    {/* Fechamento pode ser null se o caixa ainda está aberto */}
                     <TableCell>{r.closedAt ? new Date(r.closedAt).toLocaleString('pt-BR') : '-'}</TableCell>
                     <TableCell className="text-right">{fmt(r.openingBalance)}</TableCell>
                     <TableCell className="text-right">{r.closingBalance != null ? fmt(r.closingBalance) : '-'}</TableCell>
                     <TableCell className="text-center">{r.salesCount}</TableCell>
                     <TableCell className="text-right">{fmt(r.salesTotal)}</TableCell>
+                    {/* Badge de status — verde para aberto, cinza para fechado */}
                     <TableCell className="text-center">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'Aberto' ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
                         {r.status}
@@ -169,17 +201,22 @@ export default function Reports() {
         </div>
       )}
 
+      {/* === ABA PRODUTOS === */}
+      {/* Exibe: KPIs (total, ativos, estoque baixo) + gráfico horizontal dos mais vendidos + tabela de estoque baixo */}
       {!loading && tab === 'products' && productsData && (
         <div className="space-y-6">
+          {/* KPI cards — visão geral do catálogo */}
           <div className="grid grid-cols-3 gap-4">
             <div className={cardCls}><div className="text-sm text-gray-400">Total Produtos</div><div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">{productsData.totalProducts}</div></div>
             <div className={cardCls}><div className="text-sm text-gray-400">Ativos</div><div className="text-2xl font-bold text-gray-800 dark:text-white mt-1">{productsData.activeProducts}</div></div>
             <div className={cardCls}><div className="text-sm text-gray-400">Estoque Baixo</div><div className="text-2xl font-bold text-red-600 mt-1">{productsData.lowStockCount}</div></div>
           </div>
+          {/* Gráfico de barras horizontal — ranking dos produtos mais vendidos */}
           {productsData.topSold?.length > 0 && (
             <div className={cardCls}>
               <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Mais Vendidos</h3>
               <ResponsiveContainer width="100%" height={300}>
+                {/* Layout vertical: nomes dos produtos no eixo Y, quantidade no eixo X */}
                 <BarChart data={productsData.topSold} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} />
@@ -190,6 +227,7 @@ export default function Reports() {
               </ResponsiveContainer>
             </div>
           )}
+          {/* Tabela de produtos com estoque baixo — alerta visual para reposição */}
           {productsData.lowStock?.length > 0 && (
             <div className={cardCls}>
               <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Estoque Baixo</h3>
@@ -210,6 +248,8 @@ export default function Reports() {
         </div>
       )}
 
+      {/* === ABA FORNECEDORES === */}
+      {/* Exibe: tabela de fornecedores com contagem de produtos vinculados */}
       {!loading && tab === 'suppliers' && suppliersData && (
         <div className={cardCls}>
           <h3 className="text-sm font-semibold text-gray-800 dark:text-white mb-4">Fornecedores e Produtos</h3>
@@ -223,6 +263,7 @@ export default function Reports() {
                   <TableRow key={s.id}>
                     <TableCell className="font-medium text-gray-800 dark:text-white">{s.companyName}</TableCell>
                     <TableCell>{s.cnpj}</TableCell>
+                    {/* Exibe email ou telefone — fallback para '-' se nenhum disponível */}
                     <TableCell>{s.email || s.phone || '-'}</TableCell>
                     <TableCell className="text-center">{s.productCount}</TableCell>
                   </TableRow>
